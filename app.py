@@ -1,16 +1,26 @@
 import streamlit as st
-import tensorflow as tf
-from tensorflow.keras.models import load_model  # Use Keras load_model for .h5 files
-from tensorflow.keras.preprocessing import image as keras_image
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+import onnxruntime as rt
 import numpy as np
 from PIL import Image
+import requests
 
-# Ensure you use the correct path format for Windows
-model_path = r"teeth_model.keras"
+# Function to download the model from Dropbox
+def download_model(dropbox_url, output_path):
+    # Convert Dropbox URL to direct download link
+    direct_url = dropbox_url.replace("www.dropbox.com", "dl.dropboxusercontent.com").replace("?dl=0", "")
+    
+    # Download the file
+    r = requests.get(direct_url)
+    with open(output_path, 'wb') as f:
+        f.write(r.content)
 
-# Load the model using Keras's load_model function
-model = load_model(model_path)
+# Download the model from Dropbox
+dropbox_url = "https://www.dropbox.com/scl/fi/t2s43bzy00kk3lci70so3/model.onnx?rlkey=jrfke2at0vr6n7r9g5i7starv&st=jt2tyy9a&dl=0"  # Replace with your Dropbox model URL
+model_path = "model.onnx"
+download_model(dropbox_url, model_path)
+
+# Load the ONNX model
+sess = rt.InferenceSession(model_path)
 
 # Define the labels based on your encoder
 class_names = ['CaS', 'CoS', 'Gum', 'MC', 'OC', 'OLP', 'OT']
@@ -29,12 +39,12 @@ if uploaded_file is not None:
 
     # Preprocess the image
     img = img.resize((224, 224))  # Ensure this matches your model's expected input size
-    img_array = np.array(img)
-    img_array = preprocess_input(img_array)  # Preprocessing if required
+    img_array = np.array(img).astype(np.float32)
     img_array = np.expand_dims(img_array, axis=0)
 
-    # Predict
-    prediction = model.predict(img_array)
-    predicted_class = class_names[np.argmax(prediction)]
+    # Predict using ONNX runtime
+    input_name = sess.get_inputs()[0].name
+    pred_onx = sess.run(None, {input_name: img_array})
+    predicted_class = class_names[np.argmax(pred_onx[0])]
 
     st.write(f"Prediction: {predicted_class}")
